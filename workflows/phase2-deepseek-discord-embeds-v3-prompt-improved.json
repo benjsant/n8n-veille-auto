@@ -1,0 +1,137 @@
+{
+  "name": "phase2-deepseek-discord-embeds-v3-prompt-improved",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "15b703a2-e203-45a2-8dc2-e087d4dc6bf8"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.deepseek.com/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.DEEPSEEK_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"model\": \"deepseek-chat\",\n  \"temperature\": 0.0,\n  \"max_tokens\": 1500,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Tu es un analyste senior en veille technologique. Tu produis des rapports factuels basés sur les grandes tendances du secteur. Tu réponds UNIQUEMENT en français. Tu renvoies UNIQUEMENT un objet JSON valide. Pas de markdown. Pas de texte avant ou après le JSON. Ta sortie doit être directement parseable par JSON.parse().\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Génère un rapport de veille stratégique des dernières 24h.\\n\\nCONTRAINTES IMPORTANTES :\\n\\nLe champ date doit contenir la date du jour au format DD/MM/YYYY. Exemple : 15/10/2024\\n\\nRetourne EXACTEMENT 4 sections dans cet ordre :\\n1. AI\\n2. Data Engineering\\n3. MLOps\\n4. Cloud\\n\\nChaque section doit contenir :\\n- name (string exacte parmi : AI, Data Engineering, MLOps, Cloud)\\n- importance (string exacte parmi : high, medium, low)\\n- score (entier entre 0 et 100, reflétant l'impact stratégique — type number, PAS une string)\\n- bullets (tableau de EXACTEMENT 3 strings, chacune max 110 caractères)\\n- why_it_matters (1 phrase, max 180 caractères)\\n\\nTout le texte doit être en français.\\n\\nNe PAS inventer d'annonces produit spécifiques sauf si ce sont des tendances largement connues et vérifiables.\\nPréférer décrire des tendances industrielles plutôt que des actualités spécifiques potentiellement fictives.\\n\\nRetourne UNIQUEMENT du JSON valide.\\nNe PAS inclure de markdown.\\nNe PAS inclure d'explications en dehors du JSON.\\n\\nSchéma JSON exact attendu :\\n{\\n  \\\"title\\\": \\\"titre du rapport en français, max 60 caractères\\\",\\n  \\\"date\\\": \\\"DD/MM/YYYY (date du jour)\\\",\\n  \\\"sections\\\": [\\n    {\\n      \\\"name\\\": \\\"AI\\\",\\n      \\\"importance\\\": \\\"high ou medium ou low\\\",\\n      \\\"score\\\": \\\"entier entre 0 et 100\\\",\\n      \\\"bullets\\\": [\\n        \\\"Première tendance observée, max 110 chars\\\",\\n        \\\"Deuxième tendance observée, max 110 chars\\\",\\n        \\\"Troisième tendance observée, max 110 chars\\\"\\n      ],\\n      \\\"why_it_matters\\\": \\\"Explication en une phrase, max 180 chars\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"Data Engineering\\\",\\n      \\\"importance\\\": \\\"high ou medium ou low\\\",\\n      \\\"score\\\": \\\"entier entre 0 et 100\\\",\\n      \\\"bullets\\\": [\\\"...\\\", \\\"...\\\", \\\"...\\\"],\\n      \\\"why_it_matters\\\": \\\"...\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"MLOps\\\",\\n      \\\"importance\\\": \\\"high ou medium ou low\\\",\\n      \\\"score\\\": \\\"entier entre 0 et 100\\\",\\n      \\\"bullets\\\": [\\\"...\\\", \\\"...\\\", \\\"...\\\"],\\n      \\\"why_it_matters\\\": \\\"...\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"Cloud\\\",\\n      \\\"importance\\\": \\\"high ou medium ou low\\\",\\n      \\\"score\\\": \\\"entier entre 0 et 100\\\",\\n      \\\"bullets\\\": [\\\"...\\\", \\\"...\\\", \\\"...\\\"],\\n      \\\"why_it_matters\\\": \\\"...\\\"\\n    }\\n  ],\\n  \\\"top_actions\\\": [\\n    \\\"Verbe d'action recommandation 1\\\",\\n    \\\"Verbe d'action recommandation 2\\\",\\n    \\\"Verbe d'action recommandation 3\\\"\\n  ]\\n}\\n\\nRÈGLES FINALES :\\n1) sections contient EXACTEMENT 4 objets dans l'ordre : AI, Data Engineering, MLOps, Cloud.\\n2) bullets contient EXACTEMENT 3 éléments par section.\\n3) score est un ENTIER entre 0 et 100 (type number, PAS string).\\n4) top_actions contient EXACTEMENT 3 éléments commençant par un verbe d'action.\\n5) Tout le texte est en français.\\n6) Aucun markdown, aucun texte hors du JSON.\"\n    }\n  ]\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "name": "DeepSeek LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        256,
+        0
+      ],
+      "id": "6fdb103c-0a83-4a66-a212-b11600d97b42",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Parse DeepSeek response → Discord Embeds (robuste) ──\nconst raw = $input.first().json;\n\n// 0) Erreur API\nif (raw?.error) {\n  const msg = raw.error.message || raw.error.code || JSON.stringify(raw.error);\n  return [{ json: { embeds: [{\n    title: '❌ DeepSeek — Erreur API',\n    description: String(msg).slice(0, 1800),\n    color: 15158332\n  }] } }];\n}\n\n// 1) Structure attendue\nif (!raw?.choices || !raw.choices[0]?.message) {\n  const excerpt = JSON.stringify(raw, null, 2).slice(0, 1800);\n  return [{ json: { embeds: [{\n    title: '⚠️ DeepSeek — Réponse inattendue',\n    description: 'Structure inattendue (pas de choices[0].message). Extrait :\\n```\\n' + excerpt + '\\n```',\n    color: 15105570\n  }] } }];\n}\n\nconst content = raw.choices[0].message.content;\nif (!content) {\n  const excerpt = JSON.stringify(raw, null, 2).slice(0, 1800);\n  return [{ json: { embeds: [{\n    title: '❌ DeepSeek — Contenu vide',\n    description: 'choices[0].message.content est vide. Extrait :\\n```\\n' + excerpt + '\\n```',\n    color: 15158332\n  }] } }];\n}\n\n// 2) Parse JSON\nlet data;\ntry {\n  let cleaned = String(content).trim();\n  if (cleaned.startsWith('```')) {\n    cleaned = cleaned.replace(/^```(?:json)?\\n?/, '').replace(/\\n?```$/, '').trim();\n  }\n  data = JSON.parse(cleaned);\n} catch (e) {\n  const excerpt = String(content).slice(0, 1800);\n  return [{ json: { embeds: [{\n    title: '⚠️ DeepSeek — JSON invalide',\n    description: `Erreur: ${e.message}\\n\\nExtrait:\\n\\`\\`\\`\\n${excerpt}\\n\\`\\`\\``,\n    color: 15105570\n  }] } }];\n}\n\nfunction truncate(str, max) {\n  if (!str) return '';\n  str = String(str);\n  return str.length > max ? str.slice(0, max - 1) + '…' : str;\n}\nfunction clamp(val, min, max) {\n  const n = Number(val);\n  if (isNaN(n)) return min;\n  return Math.max(min, Math.min(max, Math.round(n)));\n}\n\nconst embeds = [];\nconst dateStr = new Date().toLocaleDateString('fr-FR');\n\nembeds.push({\n  title: '🧠 ' + truncate(data.title || 'Veille stratégique', 200),\n  description: '📅 **' + dateStr + '**',\n  color: 5793266\n});\n\nconst colorMap = { high: 15105570, medium: 3447003, low: 2067276 };\nconst emojiMap = { high: '🔥', medium: '⭐', low: 'ℹ️' };\n\nconst sections = Array.isArray(data.sections) ? data.sections : [];\nfor (const s of sections.slice(0, 6)) {\n  const name = s.name || 'Section';\n  const imp = ['high','medium','low'].includes(String(s.importance).toLowerCase()) ? String(s.importance).toLowerCase() : 'medium';\n  const score = clamp(s.score, 0, 100);\n  const bullets = Array.isArray(s.bullets) ? s.bullets.slice(0, 3) : [];\n  const why = truncate(s.why_it_matters, 180);\n\n  const bulletText = bullets.length ? bullets.map(b => '• ' + truncate(b, 120)).join('\\n') : '• Aucune information';\n  const whyText = why ? `\\n\\n💡 **Pourquoi :** ${why}` : '';\n\n  embeds.push({\n    title: `${name} ${emojiMap[imp]} ${imp.toUpperCase()} (${score}/100)`,\n    description: bulletText + whyText,\n    color: colorMap[imp] || colorMap.medium\n  });\n}\n\nif (Array.isArray(data.top_actions)) {\n  embeds.push({\n    title: '🎯 Actions recommandées',\n    description: data.top_actions.slice(0, 3).map(a => '→ ' + truncate(a, 140)).join('\\n') || '→ N/A',\n    color: 2067276\n  });\n}\n\nreturn [{ json: { embeds: embeds.slice(0, 10) } }];"
+      },
+      "name": "Parse + Build Embeds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        0
+      ],
+      "id": "d9a61e10-37c1-4d40-b45e-03b1a2e80b37"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL_AI }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"embeds\": $json.embeds } }}",
+        "options": {}
+      },
+      "name": "Discord Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        752,
+        0
+      ],
+      "id": "508210d6-bdd3-41ad-aa50-305d55a49d88"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "DeepSeek LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek LLM": {
+      "main": [
+        [
+          {
+            "node": "Parse + Build Embeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Build Embeds": {
+      "main": [
+        [
+          {
+            "node": "Discord Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "be0d5485-09ee-4f06-b0e8-c75ec4e4cd3a",
+  "meta": {
+    "instanceId": "2166b68486d994570c379ffc377a66a61ab7e49e6243cb1aad848723568d2342"
+  },
+  "id": "hWbaLxJs01Gcjzy0",
+  "tags": []
+}
